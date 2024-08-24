@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		8150BBF02C7A77CF00433055 /* TibiainfoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8150BBEF2C7A77CF00433055 /* TibiainfoApp.swift */; };
 		8150BBF22C7A77CF00433055 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8150BBF12C7A77CF00433055 /* ContentView.swift */; };
 		8150BBF42C7A77D200433055 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8150BBF32C7A77D200433055 /* Assets.xcassets */; };
 		8150BBF72C7A77D200433055 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8150BBF62C7A77D200433055 /* Preview Assets.xcassets */; };
@@ -15,7 +14,6 @@
 
 /* Begin PBXFileReference section */
 		8150BBEC2C7A77CF00433055 /* Tibiainfo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tibiainfo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		8150BBEF2C7A77CF00433055 /* TibiainfoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TibiainfoApp.swift; sourceTree = "<group>"; };
 		8150BBF12C7A77CF00433055 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		8150BBF32C7A77D200433055 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8150BBF62C7A77D200433055 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
@@ -51,7 +49,6 @@
 		8150BBEE2C7A77CF00433055 /* Tibiainfo */ = {
 			isa = PBXGroup;
 			children = (
-				8150BBEF2C7A77CF00433055 /* TibiainfoApp.swift */,
 				8150BBF12C7A77CF00433055 /* ContentView.swift */,
 				8150BBF32C7A77D200433055 /* Assets.xcassets */,
 				8150BBF52C7A77D200433055 /* Preview Content */,
@@ -138,7 +135,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				8150BBF22C7A77CF00433055 /* ContentView.swift in Sources */,
-				8150BBF02C7A77CF00433055 /* TibiainfoApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
