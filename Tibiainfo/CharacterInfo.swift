@@ -58,7 +58,7 @@ struct CharacterInfo: Codable {
         }
         
         struct AccountInfo: Codable {
-            let created: String
+            let created: String?
             let loyalty_title: String
         }
         
