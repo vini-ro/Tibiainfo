@@ -18,6 +18,7 @@ class CharacterViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var recentSearches: [RecentSearch] = []
+    @Published private(set) var achievements: [CharacterInfo.CharacterData.Achievement] = []
     
     private var cancellables = Set<AnyCancellable>()
     private let cache: NSCache<NSString, CachedCharacterInfo> = {
@@ -69,6 +70,11 @@ class CharacterViewModel: ObservableObject {
         
         // Keep only the most recent searches
         if searches.count > maxRecentSearches {
+            // Remove the oldest search and its associated cache
+            if let oldestSearch = searches.last {
+                let cacheKey = oldestSearch.name.replacingOccurrences(of: " ", with: "+") as NSString
+                cache.removeObject(forKey: cacheKey)
+            }
             searches = Array(searches.prefix(maxRecentSearches))
         }
         
@@ -95,14 +101,19 @@ class CharacterViewModel: ObservableObject {
             return
         }
         
-        let formattedName = cleanedName.replacingOccurrences(of: " ", with: "+")
-        
-        // Don't perform search for very short names
-        guard formattedName.count >= 2 else {
+        // Properly encode the name for URL
+        guard let formattedName = cleanedName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+            self.errorMessage = "Invalid character name"
+            self.isLoading = false
             return
         }
         
-        guard !formattedName.isEmpty else {
+        // Don't perform search for very short names
+        guard cleanedName.count >= 2 else {
+            return
+        }
+        
+        guard !cleanedName.isEmpty else {
             self.errorMessage = "Please enter a character name"
             return
         }
@@ -110,20 +121,23 @@ class CharacterViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        let cacheKey = formattedName as NSString
+        let cacheKey = cleanedName as NSString // Use original cleaned name as cache key
+        
+        // Remove old cache if refreshing
+        if isRefreshing {
+            cache.removeObject(forKey: cacheKey)
+        }
         
         // Try to get cached data first
         if let cachedInfo = getCachedData(for: cacheKey) {
             DispatchQueue.main.async { [weak self] in
                 self?.updateCharacterData(cachedInfo)
-                // Don't update recent searches if we're clicking from recent searches
                 if !fromRecentSearch {
-                    self?.saveRecentSearch(name: name, character: cachedInfo.character.character)
+                    self?.saveRecentSearch(name: cleanedName, character: cachedInfo.character.character)
                 }
                 self?.isLoading = false
             }
             
-            // If not refreshing and we have cached data, return early
             if !isRefreshing {
                 return
             }
@@ -136,12 +150,15 @@ class CharacterViewModel: ObservableObject {
             return
         }
         
-        // Continue with network request
+        // Use the properly encoded URL
         guard let url = URL(string: "https://api.tibiadata.com/v4/character/\(formattedName)") else {
             self.errorMessage = "Invalid character name"
             self.isLoading = false
             return
         }
+        
+        // Add logging to debug URL
+        print("Fetching character from URL: \(url.absoluteString)")
         
         // Cancel any existing requests
         cancellables.removeAll()
@@ -158,7 +175,16 @@ class CharacterViewModel: ObservableObject {
             .receive(on: DispatchQueue.global(qos: .userInitiated))
             .tryMap { data, response -> Data in
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    throw URLError(.badServerResponse)
+                    throw NetworkError.connectionError("Invalid server response")
+                }
+                
+                // Print response for debugging
+                print("Response status code: \(httpResponse.statusCode)")
+                print("Response headers: \(httpResponse.allHeaderFields)")
+                
+                // Print received data for debugging
+                if let dataString = String(data: data, encoding: .utf8) {
+                    print("Received data: \(dataString)")
                 }
                 
                 switch httpResponse.statusCode {
@@ -166,22 +192,46 @@ class CharacterViewModel: ObservableObject {
                     return data
                 case 404:
                     throw NetworkError.characterNotFound
+                case 500...599:
+                    throw NetworkError.serverError(statusCode: httpResponse.statusCode)
                 default:
                     throw NetworkError.serverError(statusCode: httpResponse.statusCode)
                 }
             }
             .decode(type: CharacterInfo.self, decoder: decoder)
+            .catch { error -> AnyPublisher<CharacterInfo, Error> in
+                if let decodingError = error as? DecodingError {
+                    switch decodingError {
+                    case .keyNotFound(let key, _):
+                        if key.stringValue == "loyalty_title" || 
+                           key.stringValue == "created" {
+                            return Empty().eraseToAnyPublisher()
+                        }
+                        return Fail(error: NetworkError.decodingError("Missing required data: \(key.stringValue)")).eraseToAnyPublisher()
+                    case .dataCorrupted(let context):
+                        return Fail(error: NetworkError.decodingError("Data corrupted: \(context.debugDescription)")).eraseToAnyPublisher()
+                    case .typeMismatch(_, let context):
+                        return Fail(error: NetworkError.decodingError("Invalid data format at: \(context.debugDescription)")).eraseToAnyPublisher()
+                    case .valueNotFound(_, let context):
+                        return Fail(error: NetworkError.decodingError("Missing value at: \(context.debugDescription)")).eraseToAnyPublisher()
+                    @unknown default:
+                        return Fail(error: NetworkError.decodingError("Unknown decoding error")).eraseToAnyPublisher()
+                    }
+                }
+                return Fail(error: error).eraseToAnyPublisher()
+            }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 guard let self = self else { return }
                 
-                // Ensure minimum loading time
                 let elapsed = Date().timeIntervalSince(loadingStartTime)
                 let remainingTime = max(0, minimumLoadingTime - elapsed)
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + remainingTime) {
                     self.isLoading = false
                     if case .failure(let error) = completion {
+                        // Print the full error for debugging
+                        print("Error fetching character: \(error)")
                         self.handleError(error)
                     }
                 }
@@ -225,47 +275,38 @@ class CharacterViewModel: ObservableObject {
     }
     
     private func updateCharacterData(_ info: CharacterInfo) {
-        // Batch UI updates
         DispatchQueue.main.async { [weak self] in
             self?.characterInfo = info.character.character
             self?.deaths = info.character.deaths ?? []
-            self?.accountInfo = info.character.account_information
-            self?.otherCharacters = (info.character.other_characters ?? []).filter { 
-                $0.name.lowercased() != info.character.character.name.lowercased() 
+            self?.achievements = info.character.achievements ?? []
+            
+            if let accountInfo = info.character.account_information {
+                self?.accountInfo = accountInfo
             }
+            
+            self?.otherCharacters = info.character.other_characters ?? []
         }
     }
     
     private func handleError(_ error: Error) {
-        let message: String
+        var errorMessage: String
+        
         switch error {
         case NetworkError.characterNotFound:
             os_log(.error, "🔍 Character not found")
-            message = "Character not found"
+            errorMessage = "Character not found"
         case NetworkError.serverError(let code):
-            message = "Server error (Status: \(code))"
-        case let decodingError as DecodingError:
-            switch decodingError {
-            case .keyNotFound(_, _):
-                // Instead of showing the missing data error, we'll handle it in the view
-                return
-            case .typeMismatch(let type, _):
-                message = "Invalid data format"
-                os_log(.error, "Expected Type: %{public}@", String(describing: type))
-            case .valueNotFound(_, _):
-                // Instead of showing the missing value error, we'll handle it in the view
-                return
-            case .dataCorrupted(let context):
-                message = "Data corrupted: \(context.debugDescription)"
-                os_log(.error, "Context: %{public}@", context.debugDescription)
-            @unknown default:
-                message = "Unknown decoding error"
-            }
+            errorMessage = "Server error (Status: \(code))"
+        case NetworkError.decodingError(let message):
+            errorMessage = "Data error: \(message)"
+        case NetworkError.connectionError(let message):
+            errorMessage = "Connection error: \(message)"
         default:
-            message = "Failed to load character: \(error.localizedDescription)"
+            errorMessage = "Failed to load character: \(error.localizedDescription)"
         }
-        os_log(.error, "❌ Final error message: %{public}@", message)
-        errorMessage = message
+        
+        os_log(.error, "❌ Final error message: %{public}@", errorMessage)
+        self.errorMessage = errorMessage
     }
     
     func clearCurrentSearch() {
@@ -282,6 +323,8 @@ class CharacterViewModel: ObservableObject {
 enum NetworkError: LocalizedError {
     case characterNotFound
     case serverError(statusCode: Int)
+    case decodingError(String)
+    case connectionError(String)
     
     var errorDescription: String? {
         switch self {
@@ -289,6 +332,10 @@ enum NetworkError: LocalizedError {
             return "Character not found"
         case .serverError(let code):
             return "Server error (Status: \(code))"
+        case .decodingError(let message):
+            return "Data error: \(message)"
+        case .connectionError(let message):
+            return "Connection error: \(message)"
         }
     }
 }

@@ -17,15 +17,18 @@ struct CharacterInfo: Codable {
         let deaths_truncated: Bool
         let account_information: AccountInfo?
         let other_characters: [OtherCharacter]?
+        let achievements: [Achievement]?
         
         struct Character: Codable {
             let name: String
+            let former_names: [String]?
             let title: String?
             let sex: String
             let vocation: String
             let level: Int
             let achievement_points: Int
             let world: String
+            let former_worlds: [String]?
             let residence: String
             let last_login: String?
             let account_status: String
@@ -33,13 +36,6 @@ struct CharacterInfo: Codable {
             let houses: [House]?
             let guild: Guild?
             let unlocked_titles: Int
-            
-            struct House: Codable {
-                let name: String
-                let town: String
-                let paid: String
-                let houseid: Int
-            }
         }
         
         struct Death: Codable {
@@ -59,7 +55,7 @@ struct CharacterInfo: Codable {
         
         struct AccountInfo: Codable {
             let created: String?
-            let loyalty_title: String
+            let loyalty_title: String?
         }
         
         struct OtherCharacter: Codable {
@@ -74,6 +70,19 @@ struct CharacterInfo: Codable {
         struct Guild: Codable {
             let name: String
             let rank: String
+        }
+        
+        struct Achievement: Codable {
+            let name: String
+            let grade: Int
+            let secret: Bool
+        }
+        
+        struct House: Codable {
+            let name: String
+            let town: String
+            let paid: String
+            let houseid: Int
         }
     }
     
