@@ -12,6 +12,8 @@ struct ContentView: View {
     @StateObject private var viewModel = CharacterViewModel()
     @State private var characterName: String = ""
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showingShareSheet = false
+    @State private var shareImage: UIImage?
     
     var body: some View {
         NavigationView {
@@ -86,6 +88,22 @@ struct ContentView: View {
                     }
                     .padding()
                 }
+                .toolbar {
+                    if viewModel.characterInfo != nil {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: {
+                                prepareShare()
+                            }) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showingShareSheet) {
+                    if let image = shareImage {
+                        ShareSheet(items: [image])
+                    }
+                }
                 
                 // Loading overlay
                 if viewModel.isLoading {
@@ -114,7 +132,7 @@ struct ContentView: View {
                     .zIndex(2)
                 }
             }
-            .navigationBarHidden(true)
+            .navigationBarHidden(false)
         }
     }
     
@@ -231,7 +249,7 @@ struct ContentView: View {
                 InfoRow(label: "Residence", value: character.residence)
                 
                 if let lastLogin = character.last_login {
-                    InfoRow(label: "Last Login", value: lastLogin)
+                    InfoRow(label: "Last Login", value: lastLogin.formatTibiaDate())
                 }
                 
                 InfoRow(label: "Account Status", value: character.account_status)
@@ -398,6 +416,37 @@ struct ContentView: View {
         .cornerRadius(10)
         .shadow(radius: 2)
     }
+    
+    private func prepareShare() {
+        // Create a VStack with all the content we want to share
+        let contentToShare = VStack(spacing: 20) {
+            if let character = viewModel.characterInfo {
+                characterInfoSection(character)
+                
+                if !viewModel.deaths.isEmpty {
+                    deathsSection
+                }
+                
+                if !viewModel.achievements.isEmpty {
+                    achievementsSection
+                }
+                
+                if let accountInfo = viewModel.accountInfo {
+                    accountInfoSection(accountInfo)
+                }
+                
+                if !viewModel.otherCharacters.isEmpty {
+                    otherCharactersSection
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        
+        // Convert the view to an image
+        shareImage = contentToShare.snapshot()
+        showingShareSheet = true
+    }
 }
 
 struct InfoRow: View {
@@ -432,5 +481,58 @@ struct ContentView_Previews: PreviewProvider {
 extension View {
     func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+extension View {
+    func snapshot() -> UIImage {
+        let controller = UIHostingController(rootView: self)
+        let view = controller.view
+        
+        let targetSize = controller.view.intrinsicContentSize
+        view?.bounds = CGRect(origin: .zero, size: targetSize)
+        view?.backgroundColor = .clear
+        
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        return renderer.image { _ in
+            view?.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+        }
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+extension String {
+    func formatTibiaDate() -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        
+        // First try the ISO format
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        if let date = dateFormatter.date(from: self) {
+            dateFormatter.timeZone = TimeZone(identifier: "America/Sao_Paulo")
+            dateFormatter.dateFormat = "dd/MM/yyyy HH:mm BRT"
+            return dateFormatter.string(from: date)
+        }
+        
+        // If ISO format fails, try parsing the existing format
+        dateFormatter.dateFormat = "dd/MM/yyyy HH:mm 'in the afternoon'"
+        if let date = dateFormatter.date(from: self) {
+            dateFormatter.timeZone = TimeZone(identifier: "America/Sao_Paulo")
+            dateFormatter.dateFormat = "dd/MM/yyyy HH:mm BRT"
+            return dateFormatter.string(from: date)
+        }
+        
+        // Return original string if parsing fails
+        return self
     }
 }
